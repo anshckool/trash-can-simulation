@@ -1,0 +1,2427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous Target-Tracking Smart Trash Can (5 m/s Sweet Spot Hybrid Build)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Three.js r128 & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            slate: {
+              850: '#141e33',
+              900: '#0f172a',
+              950: '#070c18',
+            },
+            cyan: {
+              450: '#00d2ff',
+            },
+            amber: {
+              450: '#ffaa00',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #070c18;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.4);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(56, 189, 248, 0.7);
+    }
+    /* Glassmorphism panels */
+    .glass-panel {
+      background: rgba(11, 19, 35, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.55);
+    }
+    .glass-panel-sub {
+      background: rgba(16, 27, 49, 0.70);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    /* Pulse animations */
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.9); }
+    }
+    .animate-pulse-fast {
+      animation: pulse-fast 0.7s infinite;
+    }
+    @keyframes radio-glow {
+      0% { opacity: 0.8; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.1); }
+      100% { opacity: 0.8; transform: scale(0.8); }
+    }
+    .animate-radio {
+      animation: radio-glow 1.5s infinite;
+    }
+  </style>
+</head>
+<body class="text-slate-100 select-none overflow-hidden font-sans">
+
+  <!-- 3D WebGL Canvas Container -->
+  <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+  <!-- TOP HEADER / NAV BAR -->
+  <header class="absolute top-0 left-0 right-0 z-20 pointer-events-none p-3 sm:p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+    <!-- Brand / Title -->
+    <div class="pointer-events-auto flex items-center gap-3 glass-panel px-4 py-2.5 rounded-xl border border-cyan-500/20">
+      <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25">
+        <i class="fa-solid fa-robot text-lg"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-extrabold tracking-wider text-slate-100 uppercase">Target-Tracking Smart Trash Can</h1>
+          <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">5 m/s SWEET SPOT BUILD</span>
+        </div>
+        <p class="text-[11px] text-slate-400 font-medium">Strict Newtonian Aerodynamics • 95ms Vision Latency • 3-Wheel Kiwi Holonomic Drive • Traction Clamped</p>
+      </div>
+    </div>
+
+    <!-- Live Telemetry Status Badges -->
+    <div class="pointer-events-auto flex items-center gap-2 flex-wrap sm:flex-nowrap">
+      <!-- State Engine Status Badge -->
+      <div id="status-badge-container" class="glass-panel px-3.5 py-2 rounded-xl flex items-center gap-2.5 border border-slate-700/60 shadow-lg">
+        <span id="status-indicator-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <div>
+          <div class="text-[9px] font-mono text-slate-400 uppercase tracking-widest">STATE ENGINE</div>
+          <div id="status-badge-text" class="text-xs font-mono font-bold text-emerald-400">IDLE / ARMED</div>
+        </div>
+      </div>
+
+      <!-- Vision Pipeline Status -->
+      <div class="hidden lg:flex glass-panel px-3 py-2 rounded-xl items-center gap-2.5 border border-slate-700/60 shadow-lg">
+        <i class="fa-solid fa-video text-xs text-purple-400"></i>
+        <div>
+          <div class="text-[9px] font-mono text-slate-400 uppercase tracking-widest">VISION PIPELINE</div>
+          <div class="text-xs font-mono font-semibold text-purple-300">95ms Latency (120 FPS)</div>
+        </div>
+      </div>
+
+      <!-- Catch Statistics Pill -->
+      <div class="glass-panel px-3.5 py-2 rounded-xl flex items-center gap-3 border border-slate-700/60 shadow-lg">
+        <div>
+          <div class="text-[9px] font-mono text-slate-400 uppercase tracking-widest">CATCH RATE</div>
+          <div id="header-catch-rate" class="text-xs font-mono font-bold text-cyan-400">83.3%</div>
+        </div>
+        <div class="w-px h-6 bg-slate-700/60"></div>
+        <div class="text-[11px] font-mono text-slate-300">
+          <span id="header-catches" class="text-emerald-400 font-bold">5</span> / <span id="header-throws" class="text-slate-400">6</span>
+        </div>
+      </div>
+
+      <!-- Audio Mute Toggle -->
+      <button id="sound-toggle-btn" class="glass-panel hover:bg-slate-800 text-slate-300 p-2.5 rounded-xl border border-slate-700/60 text-xs transition cursor-pointer" title="Toggle Synthesized Audio Feedback">
+        <i id="sound-icon" class="fa-solid fa-volume-high text-cyan-400"></i>
+      </button>
+
+      <!-- Right Sidebar Toggle Button -->
+      <button id="toggle-sidebar-btn" class="glass-panel hover:bg-slate-800 text-slate-200 px-3.5 py-2.5 rounded-xl border border-slate-700/60 text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-lg">
+        <i class="fa-solid fa-sliders text-cyan-400"></i>
+        <span class="hidden sm:inline">Inspect & Audit</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- LEFT HUD OVERLAY (Flight Telemetry, Actuators, Trajectory Info) -->
+  <aside class="absolute left-3 sm:left-4 top-20 sm:top-24 bottom-28 sm:bottom-24 z-10 pointer-events-none flex flex-col justify-between w-72 sm:w-80">
+    <!-- Kinematic & Actuator Card -->
+    <div class="pointer-events-auto glass-panel p-3.5 sm:p-4 rounded-2xl flex flex-col gap-3">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+          <i class="fa-solid fa-gauge-high text-cyan-400"></i> Live Telemetry
+        </span>
+        <span id="chassis-tilt-val" class="text-[10px] font-mono text-slate-400">Tilt: 0.0°</span>
+      </div>
+
+      <!-- Linear Speed & Acceleration Displays -->
+      <div class="grid grid-cols-2 gap-2">
+        <div class="glass-panel-sub p-2.5 rounded-xl">
+          <div class="text-[10px] font-mono text-slate-400 flex justify-between">
+            <span>SPEED</span>
+            <span class="text-cyan-400 font-bold">5.0 m/s max</span>
+          </div>
+          <div class="flex items-baseline gap-1 mt-1">
+            <span id="telemetry-speed" class="text-xl font-mono font-extrabold text-cyan-300">0.00</span>
+            <span class="text-[11px] text-slate-400 font-mono">m/s</span>
+          </div>
+          <!-- Speed Progress Bar -->
+          <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden mt-1.5 border border-slate-800">
+            <div id="telemetry-speed-bar" class="h-full bg-cyan-400 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="glass-panel-sub p-2.5 rounded-xl">
+          <div class="text-[10px] font-mono text-slate-400 flex justify-between">
+            <span>ACCEL</span>
+            <span class="text-amber-400 font-bold">5.5 m/s² max</span>
+          </div>
+          <div class="flex items-baseline gap-1 mt-1">
+            <span id="telemetry-accel" class="text-xl font-mono font-extrabold text-amber-300">0.00</span>
+            <span class="text-[11px] text-slate-400 font-mono">m/s²</span>
+          </div>
+          <!-- Accel Progress Bar -->
+          <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden mt-1.5 border border-slate-800">
+            <div id="telemetry-accel-bar" class="h-full bg-amber-400 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-Wheel Kiwi Holonomic Motors & RPM (100mm Omni Wheels, 1,012 RPM) -->
+      <div class="glass-panel-sub p-3 rounded-xl flex flex-col gap-2">
+        <div class="flex justify-between items-center text-[10px] font-mono text-slate-300 border-b border-slate-800/80 pb-1">
+          <span class="font-bold flex items-center gap-1"><i class="fa-solid fa-gear text-slate-400"></i> KIWI 120° WHEEL MOTORS</span>
+          <span class="text-slate-400 font-mono">Max 1,012 RPM</span>
+        </div>
+
+        <!-- Wheel 1: 0° -->
+        <div class="flex flex-col gap-0.5">
+          <div class="flex justify-between text-[10px] font-mono">
+            <span class="text-slate-400">M1 (0° Front-X):</span>
+            <span id="rpm-w1" class="text-cyan-300 font-bold">0 RPM</span>
+          </div>
+          <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+            <div id="bar-w1" class="h-full bg-cyan-400 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Wheel 2: 120° -->
+        <div class="flex flex-col gap-0.5">
+          <div class="flex justify-between text-[10px] font-mono">
+            <span class="text-slate-400">M2 (120° Rear-L):</span>
+            <span id="rpm-w2" class="text-indigo-300 font-bold">0 RPM</span>
+          </div>
+          <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+            <div id="bar-w2" class="h-full bg-indigo-400 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Wheel 3: 240° -->
+        <div class="flex flex-col gap-0.5">
+          <div class="flex justify-between text-[10px] font-mono">
+            <span class="text-slate-400">M3 (240° Rear-R):</span>
+            <span id="rpm-w3" class="text-purple-300 font-bold">0 RPM</span>
+          </div>
+          <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+            <div id="bar-w3" class="h-full bg-purple-400 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aerodynamic Drag & Vacuum Parabola Comparison -->
+      <div class="glass-panel-sub p-2.5 rounded-xl text-[10px] font-mono space-y-1.5">
+        <div class="flex items-center justify-between text-slate-300 font-bold">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-wind text-cyan-400"></i> TRAJECTORY PHYSICS</span>
+          <span id="drag-loss-pct" class="text-cyan-400 font-bold">-22.4% Range</span>
+        </div>
+        <div class="flex items-center gap-2 text-slate-400">
+          <span class="inline-block w-3 h-0.5 border-t-2 border-dashed border-slate-400"></span>
+          <span>Vacuum Parabola (idealized zero-drag)</span>
+        </div>
+        <div class="flex items-center gap-2 text-slate-300">
+          <span class="inline-block w-3 h-0.5 bg-cyan-400 shadow-sm shadow-cyan-400"></span>
+          <span>Crumpled Paper Ball (Cd=0.80, 4.5g drag)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tally & Outcome Card -->
+    <div class="pointer-events-auto glass-panel p-3.5 rounded-2xl flex flex-col gap-2.5">
+      <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between border-b border-slate-800 pb-1.5">
+        <span>Toss Outcome Breakdown</span>
+        <button id="reset-stats-btn" class="text-[10px] text-slate-400 hover:text-white transition cursor-pointer">
+          <i class="fa-solid fa-rotate-left"></i> Reset
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 text-center font-mono">
+        <div class="glass-panel-sub p-2 rounded-xl border-b-2 border-emerald-500">
+          <div class="text-[9px] text-slate-400">CLEAN CATCH</div>
+          <div id="stat-catches" class="text-base font-bold text-emerald-400">5</div>
+          <div class="text-[9px] text-slate-500">&le; 12.5 cm</div>
+        </div>
+        <div class="glass-panel-sub p-2 rounded-xl border-b-2 border-amber-500">
+          <div class="text-[9px] text-slate-400">RIM BOUNCE</div>
+          <div id="stat-bounces" class="text-base font-bold text-amber-400">1</div>
+          <div class="text-[9px] text-slate-500">12.5-17.5 cm</div>
+        </div>
+        <div class="glass-panel-sub p-2 rounded-xl border-b-2 border-rose-500">
+          <div class="text-[9px] text-slate-400">LATE MISS</div>
+          <div id="stat-misses" class="text-base font-bold text-rose-400">0</div>
+          <div class="text-[9px] text-slate-500">&gt; 17.5 cm</div>
+        </div>
+      </div>
+
+      <!-- Last Toss Impact Error -->
+      <div class="flex justify-between items-center text-[10px] font-mono px-1">
+        <span class="text-slate-400">Last Rim Error:</span>
+        <span id="last-impact-error" class="text-cyan-300 font-bold">4.2 cm (Clean)</span>
+      </div>
+      <div class="flex justify-between items-center text-[10px] font-mono px-1">
+        <span class="text-slate-400">Last Sprint Duration:</span>
+        <span id="last-flight-time" class="text-slate-300">0.68 s</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- BOTTOM CONTROL DOCK -->
+  <div class="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-3 sm:right-4 z-20 pointer-events-none flex flex-col md:flex-row items-end md:items-center justify-between gap-3">
+    <!-- Camera View Preset Buttons -->
+    <div class="pointer-events-auto glass-panel p-1.5 rounded-2xl flex items-center gap-1 border border-slate-700/60 shadow-xl overflow-x-auto max-w-full">
+      <button class="cam-btn px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-cam="iso">
+        <i class="fa-solid fa-cube text-cyan-400 text-[11px]"></i> <span>Isometric</span>
+      </button>
+      <button class="cam-btn px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-cam="under">
+        <i class="fa-solid fa-magnifying-glass-arrow-right text-indigo-400 text-[11px]"></i> <span>Under-Chassis</span>
+      </button>
+      <button class="cam-btn px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-cam="ceiling">
+        <i class="fa-solid fa-camera text-purple-400 text-[11px]"></i> <span>120 FPS POV</span>
+      </button>
+      <button class="cam-btn px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-cam="topdown">
+        <i class="fa-solid fa-compass text-emerald-400 text-[11px]"></i> <span>Kiwi Top-Down</span>
+      </button>
+      <button class="cam-btn px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-cam="desk">
+        <i class="fa-solid fa-laptop text-amber-400 text-[11px]"></i> <span>Vision Desk</span>
+      </button>
+    </div>
+
+    <!-- Throw Actions & Sliders Main Dock -->
+    <div class="pointer-events-auto glass-panel p-2.5 sm:p-3 rounded-2xl flex flex-wrap items-center gap-2 sm:gap-3 border border-slate-700/60 shadow-2xl">
+      <!-- Manual Sliders Group: Throw Speed & Distance -->
+      <div class="hidden xl:flex items-center gap-3 px-2 py-1 glass-panel-sub rounded-xl">
+        <!-- Throw Speed Slider (2.5 - 6.0 m/s) -->
+        <div class="flex flex-col">
+          <div class="flex justify-between items-center text-[9px] font-mono text-slate-400 gap-2">
+            <span>SPEED</span>
+            <span id="slider-speed-val" class="text-cyan-400 font-bold">3.2 m/s</span>
+          </div>
+          <input id="slider-speed" type="range" min="2.5" max="6.0" step="0.1" value="3.2" class="w-20 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+        </div>
+        <!-- Throw Distance Slider (0.4 - 1.8 m) -->
+        <div class="flex flex-col">
+          <div class="flex justify-between items-center text-[9px] font-mono text-slate-400 gap-2">
+            <span>DIST</span>
+            <span id="slider-dist-val" class="text-amber-400 font-bold">0.85 m</span>
+          </div>
+          <input id="slider-dist" type="range" min="0.4" max="1.8" step="0.05" value="0.85" class="w-20 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400">
+        </div>
+      </div>
+
+      <!-- Exploded View Slider -->
+      <div class="flex items-center gap-2 px-2 py-1 glass-panel-sub rounded-xl">
+        <i class="fa-solid fa-layer-group text-cyan-400 text-xs"></i>
+        <div class="flex flex-col">
+          <div class="flex justify-between items-center text-[9px] font-mono text-slate-400">
+            <span>EXPLODE</span>
+            <span id="exploded-val" class="text-cyan-400 font-bold">0%</span>
+          </div>
+          <input id="exploded-slider" type="range" min="0" max="100" value="0" class="w-20 sm:w-24 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+        </div>
+      </div>
+
+      <!-- X-Ray Shell Toggle -->
+      <button id="xray-toggle-btn" class="glass-panel-sub hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700/40 transition cursor-pointer">
+        <i class="fa-solid fa-eye text-cyan-400"></i>
+        <span id="xray-label">X-Ray: OFF</span>
+      </button>
+
+      <!-- Center Bin Reset -->
+      <button id="center-bin-btn" class="glass-panel-sub hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700/40 transition cursor-pointer" title="Return trash can to arena origin">
+        <i class="fa-solid fa-location-crosshairs text-indigo-400"></i>
+        <span class="hidden sm:inline">Center</span>
+      </button>
+
+      <!-- Primary Throw Buttons -->
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <!-- Normal Toss Button -->
+        <button id="throw-normal-btn" class="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-cyan-500/25 active:scale-95 transition cursor-pointer">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>Toss (Normal)</span>
+        </button>
+
+        <!-- Extreme Far Toss Button -->
+        <button id="throw-extreme-btn" class="bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-rose-600/25 active:scale-95 transition cursor-pointer" title="Fast cross-room throw: forces genuine Rim Bounces and Late Misses!">
+          <i class="fa-solid fa-bolt"></i>
+          <span>Extreme</span>
+        </button>
+
+        <!-- Auto-Toss Toggle -->
+        <button id="auto-toss-btn" class="glass-panel-sub hover:bg-slate-800 text-slate-300 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700/40 transition cursor-pointer">
+          <i class="fa-solid fa-repeat text-emerald-400"></i>
+          <span id="auto-toss-label" class="hidden sm:inline">Auto: OFF</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SLIDE-OUT PANEL (Hardware Inspector & Physics/Latency Audit) -->
+  <div id="sidebar-panel" class="fixed top-0 right-0 bottom-0 w-80 sm:w-96 glass-panel z-30 translate-x-full transition-transform duration-300 ease-out border-l border-slate-800/80 flex flex-col shadow-2xl">
+    <!-- Sidebar Header & Tabs -->
+    <div class="p-3.5 sm:p-4 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex gap-2">
+        <button id="tab-hw-btn" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition">
+          <i class="fa-solid fa-microchip mr-1"></i> Hardware CAD
+        </button>
+        <button id="tab-audit-btn" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-200 transition">
+          <i class="fa-solid fa-chart-line mr-1"></i> Physics & Latency
+        </button>
+      </div>
+      <button id="close-sidebar-btn" class="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer">
+        <i class="fa-solid fa-xmark text-base"></i>
+      </button>
+    </div>
+
+    <!-- Tab 1: Hardware Inspector Content -->
+    <div id="tab-hw-content" class="flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="text-xs text-slate-400 leading-relaxed">
+        Click any subsystem below to highlight it on the CAD model, focus the camera, and view mechanical engineering tolerances.
+      </div>
+
+      <!-- Subsystems Accordion/List -->
+      <div class="space-y-2.5">
+        <!-- 1. Chassis Deck & Hex Standoffs -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="chassis">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-shield-halved text-cyan-400"></i> Anti-Tip Chassis & Standoffs
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">CG &lt; 0.14 m</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            36 cm diameter circular lower deck (R = 0.18 m, y = 0.065 m) and upper collar deck (y = 0.155 m) fastened with 4x M3 brass hex standoffs.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Diameter: 360 mm</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Tipping: 6.3 m/s²</div>
+          </div>
+        </div>
+
+        <!-- 2. Kiwi Holonomic Drive (Omni Wheels & Rollers) -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="wheels">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-circle-nodes text-indigo-400"></i> 100mm Double Omni Wheels
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">3x 120° Kiwi</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            Dual-row aluminum omni wheels with staggered rubber perimeter rollers (24 per wheel). Allows zero-friction lateral slip while transferring tangential drive torque.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Roller Scrub: ~6%</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Max Wheel: 1,012 RPM</div>
+          </div>
+        </div>
+
+        <!-- 3. 5010 Brushless Motors & 3:1 Belt Drive -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="motors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-arrows-spin text-purple-400"></i> 5010 360KV Motors & 3:1 HTD
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">High-Torque</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            3x 5010 360KV brushless outrunners geared down 3:1 via HTD 3M timing belts and 15T/45T pulleys for rapid 5.5 m/s² wheel acceleration.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Torque: 0.88 N·m</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Peak: 3x 450W</div>
+          </div>
+        </div>
+
+        <!-- 4. Electronics, VESCs & ESP32-Receiver -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="electronics">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-microchip text-emerald-400"></i> VESC Mini FOC & ESP32 #2
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">ESP-NOW RX</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            3x VESC Mini FOC controllers running field-oriented sinusoidal commutation, ESP32 receiver, LM2596S 5V buck, and 1.5KE27A TVS diode + 1000µF capacitor for regen spike suppression.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">RF: ESP-NOW 2.4GHz</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Clamping: 27V TVS</div>
+          </div>
+        </div>
+
+        <!-- 5. 6S Direct LiPo Power -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="battery">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-battery-full text-amber-400"></i> 6S 22.2V 2200mAh 45C LiPo
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">Ultra-Low CG</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            High-discharge 6S pack mounted flat directly on the bottom chassis deck. Keeps the robot's center of gravity safely under 14 cm to prevent tipping during aggressive deceleration.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Nominal: 22.2V (6S)</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Burst: 99A (45C)</div>
+          </div>
+        </div>
+
+        <!-- 6. Catch Basket & ArUco Rim Marker -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="basket">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-trash-can text-cyan-300"></i> Catch Bin & ArUco Marker
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">Rim: 0.568 m</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            Tapered translucent polycarbonate cylinder (30 cm mouth, 22 cm base) with high-contrast ArUco fiducial marker on the rim for 120 FPS ceiling pose estimation and visual servoing.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Mouth Dia: 300 mm</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Rim Plane: y = 0.568m</div>
+          </div>
+        </div>
+
+        <!-- 7. Ceiling Camera & Vision Station -->
+        <div class="hw-item glass-panel-sub p-3 rounded-xl border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer" data-part="vision">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-satellite-dish text-purple-400"></i> OV9281 120FPS & ESP-NOW TX
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">Ceiling Rig</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            Ceiling-mounted monochrome global-shutter camera with planar homography covering 3m x 3m arena. Beams predicted trajectory coordinates via ESP32 #1 dongle in 3 ms.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5 mt-2 text-[10px] font-mono text-slate-300">
+            <div class="bg-slate-900/60 p-1.5 rounded">Rate: 120 FPS</div>
+            <div class="bg-slate-900/60 p-1.5 rounded">Shutter: Global Mono</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Physics & Latency Audit Content -->
+    <div id="tab-audit-content" class="flex-1 overflow-y-auto p-4 space-y-4 hidden">
+      <!-- 95ms Latency Waterfall -->
+      <div class="glass-panel-sub p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+            <i class="fa-solid fa-stopwatch text-purple-400"></i> Total Pipeline Delay: 95 ms
+          </span>
+          <span class="text-[10px] font-mono text-purple-300 font-bold">CRITICAL LATENCY</span>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          From the instant the user lets go of the trash, the robot cannot sprint until all 6 stages of image capture, decode, optical tracking, serial transfer, and motor ramp conclude:
+        </p>
+
+        <!-- Waterfall Steps -->
+        <div class="space-y-1.5 font-mono text-[10px]">
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">1. Optical Exposure & 7 Frames (120 FPS)</span>
+            <span class="text-purple-400 font-bold">58 ms</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">2. OS UVC & MJPEG Frame Decode</span>
+            <span class="text-purple-400 font-bold">25 ms</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">3. OpenCV MOG2 & Trajectory Fit</span>
+            <span class="text-purple-400 font-bold">4 ms</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">4. USB Serial to ESP32 #1 Dongle</span>
+            <span class="text-purple-400 font-bold">4 ms</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">5. ESP-NOW 2.4GHz RF Packet</span>
+            <span class="text-purple-400 font-bold">3 ms</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-900/80 p-1.5 rounded">
+            <span class="text-slate-300">6. VESC FOC Current Controller Ramp</span>
+            <span class="text-purple-400 font-bold">5 ms</span>
+          </div>
+        </div>
+
+        <div class="p-2.5 rounded bg-purple-950/30 border border-purple-500/20 text-[10px] text-purple-300 leading-normal">
+          <strong>Physical Consequence:</strong> At 95 ms, the amber target ring jitters with &plusmn;5.5 cm estimation noise while the bin is still at a dead stop. At 210 ms, a refinement packet narrows noise to &plusmn;1.6 cm (green ring).
+        </div>
+      </div>
+
+      <!-- Aerodynamic Drag Math -->
+      <div class="glass-panel-sub p-3.5 rounded-xl border border-slate-800 space-y-2">
+        <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+          <i class="fa-solid fa-wind text-cyan-400"></i> Aerodynamic Quadratic Drag
+        </span>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Standard parabolic calculations severely overshoot real paper tosses. We integrate true quadratic fluid drag:
+        </p>
+        <div class="p-2 rounded bg-slate-900 font-mono text-[10px] text-cyan-300 border border-slate-800">
+          F_drag = -0.5 * &rho; * C_d * A * |v| * v<br>
+          &bull; Mass: m = 0.0045 kg (4.5 g)<br>
+          &bull; Radius: r = 0.035 m (Area = 0.00385 m²)<br>
+          &bull; Drag Coeff: C_d = 0.80 (crumpled paper)<br>
+          &bull; Air Density: &rho; = 1.225 kg/m³
+        </div>
+        <p class="text-[10px] text-slate-400">
+          Result: Paper loses 15%–35% horizontal range and steepens dramatically before reaching the rim plane.
+        </p>
+      </div>
+
+      <!-- Tipping & Traction Limits -->
+      <div class="glass-panel-sub p-3.5 rounded-xl border border-slate-800 space-y-2">
+        <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Traction & Tipping Stability
+        </span>
+        <div class="space-y-1 font-mono text-[10px] text-slate-300">
+          <div class="flex justify-between">
+            <span>Traction Clamp (μ ≈ 0.56):</span>
+            <span class="text-amber-400 font-bold">a_max = 5.5 m/s²</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Anti-Tip Threshold (b=0.09m, h=0.14m):</span>
+            <span class="text-emerald-400 font-bold">a_tip = 6.3 m/s²</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Max Chassis Tilt Angle:</span>
+            <span class="text-cyan-400 font-bold">&plusmn;0.08 rad (&plusmn;4.6°)</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Floor Slip Perturbation:</span>
+            <span class="text-rose-400 font-bold">5%–10% stochastic</span>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-400">
+          With a_max = 5.5 m/s² safely under the 6.3 m/s² rollover limit, the robot can brake at full traction without tumbling, exhibiting dynamic chassis pitch/roll tilt.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-20 right-4 sm:right-6 z-40 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- MAIN SCRIPT (THREE.JS, PHYSICS ENGINE, KINEMATICS, UI CONTROLLER) -->
+  <script>
+    /* ==========================================================================
+       1. GLOBAL CONSTANTS & PHYSICS PARAMETERS
+       ========================================================================== */
+    const G = 9.81;                    // Gravity (m/s²)
+    const AIR_RHO = 1.225;             // Air density at sea level (kg/m³)
+    const BALL_MASS = 0.0045;          // 4.5 g crumpled paper ball
+    const BALL_RADIUS = 0.035;         // 3.5 cm radius (7 cm diameter)
+    const BALL_CD = 0.80;              // Drag coefficient of crumpled paper
+    const BALL_AREA = Math.PI * BALL_RADIUS * BALL_RADIUS; // Cross-sectional area
+    const DRAG_FACTOR = 0.5 * AIR_RHO * BALL_CD * BALL_AREA; // F_d = -DRAG_FACTOR * |v| * v
+
+    // Robot Geometry & Dynamics (5 m/s Sweet Spot Hybrid Build)
+    const RIM_HEIGHT = 0.568;          // Basket top rim plane height (m)
+    const RIM_RADIUS = 0.150;          // Basket mouth radius (30 cm diameter)
+    const CHASSIS_RADIUS = 0.180;      // Lower baseplate radius (36 cm diameter)
+    const V_MAX = 5.0;                 // Max linear translation speed (m/s)
+    const A_MAX = 5.5;                 // Max acceleration clamped by tile traction limit (m/s²)
+    const A_TIP = 6.3;                 // Physical tipping threshold (g * b / h_cg)
+    const WHEEL_RADIUS = 0.050;        // 100mm double omni wheels (r = 50mm)
+    const MAX_WHEEL_RPM = 1012;        // Top speed wheel rotational speed (RPM)
+
+    // Latency & Sensor Noise Constants
+    const LATENCY_INITIAL = 0.095;     // 95 ms total delay before motion starts
+    const LATENCY_REFINEMENT = 0.210;  // 210 ms mid-flight correction packet
+    const NOISE_INITIAL = 0.055;       // ±5.5 cm target estimation jitter during 0-95ms
+    const NOISE_REFINED = 0.016;       // ±1.6 cm target estimation noise after refinement
+
+    // Rim Catch Margins (at rim plane y = 0.568 m)
+    const CATCH_RADIUS = 0.125;        // err <= 0.125m => Clean Catch
+    const BOUNCE_RADIUS = 0.175;       // 0.125m < err <= 0.175m => Rim Bounce
+
+    /* ==========================================================================
+       2. PROCEDURAL SOUND SYNTHESIZER (WEB AUDIO API)
+       ========================================================================== */
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playSound(type) {
+      if (!soundEnabled || !audioCtx) return;
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'throw') {
+          // Soft whoosh
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(260, now);
+          osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.18);
+        } else if (type === 'radio') {
+          // High electronic chirp for ESP-NOW packet
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.setValueAtTime(1320, now + 0.03);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          osc.start(now);
+          osc.stop(now + 0.07);
+        } else if (type === 'catch') {
+          // Harmonious chime
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.08);
+          osc.frequency.setValueAtTime(783.99, now + 0.16);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.start(now);
+          osc.stop(now + 0.45);
+        } else if (type === 'bounce') {
+          // Clattering plastic thud
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(320, now);
+          osc.frequency.exponentialRampToValueAtTime(120, now + 0.12);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else if (type === 'miss') {
+          // Dull thud
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(60, now + 0.2);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+          osc.start(now);
+          osc.stop(now + 0.2);
+        }
+      } catch (e) {
+        // Audio policy or context issue
+      }
+    }
+
+    /* ==========================================================================
+       3. THREE.JS SCENE SETUP
+       ========================================================================== */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x070c18);
+    scene.fog = new THREE.FogExp2(0x070c18, 0.06);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 50);
+    camera.position.set(2.8, 2.5, 3.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 + 0.05; // Allow slight under-chassis peek
+    controls.minDistance = 0.4;
+    controls.maxDistance = 8.0;
+    controls.target.set(0, 0.35, 0);
+
+    /* ==========================================================================
+       4. ARENA LIGHTING & ENVIRONMENT
+       ========================================================================== */
+    const hemiLight = new THREE.HemisphereLight(0xddeeff, 0x111827, 0.65);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.25);
+    dirLight.position.set(3, 5, 2);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 10;
+    dirLight.shadow.camera.left = -2.5;
+    dirLight.shadow.camera.right = 2.5;
+    dirLight.shadow.camera.top = 2.5;
+    dirLight.shadow.camera.bottom = -2.5;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    // Subtle blue rim accent light
+    const rimLight = new THREE.DirectionalLight(0x00d2ff, 0.6);
+    rimLight.position.set(-3, 3, -3);
+    scene.add(rimLight);
+
+    // Arena Floor (3m x 3m Tile Arena with Boundary Rings)
+    const arenaGroup = new THREE.Group();
+    scene.add(arenaGroup);
+
+    // Textured Grid Floor
+    const floorGeo = new THREE.PlaneGeometry(3.6, 3.6);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x0c1322,
+      roughness: 0.28,
+      metalness: 0.15,
+    });
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    arenaGroup.add(floorMesh);
+
+    // Arena Grid Lines (10cm tile grid)
+    const gridHelper = new THREE.GridHelper(3.6, 36, 0x00d2ff, 0x1e293b);
+    gridHelper.position.y = 0.001;
+    arenaGroup.add(gridHelper);
+
+    // Target Concentric Rings on Floor (0.5m, 1.0m, 1.5m radius)
+    [0.5, 1.0, 1.5].forEach((rad, idx) => {
+      const ringGeo = new THREE.RingGeometry(rad - 0.005, rad + 0.005, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: idx === 0 ? 0x06b6d4 : (idx === 1 ? 0x3b82f6 : 0x475569),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.35
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.002;
+      arenaGroup.add(ring);
+    });
+
+    // Outer Boundary Barrier Perimeter
+    const barrierMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.4, roughness: 0.6 });
+    const bGeoX = new THREE.BoxGeometry(3.6, 0.04, 0.03);
+    const bGeoZ = new THREE.BoxGeometry(0.03, 0.04, 3.6);
+    const b1 = new THREE.Mesh(bGeoX, barrierMat); b1.position.set(0, 0.02, 1.8); arenaGroup.add(b1);
+    const b2 = new THREE.Mesh(bGeoX, barrierMat); b2.position.set(0, 0.02, -1.8); arenaGroup.add(b2);
+    const b3 = new THREE.Mesh(bGeoZ, barrierMat); b3.position.set(1.8, 0.02, 0); arenaGroup.add(b3);
+    const b4 = new THREE.Mesh(bGeoZ, barrierMat); b4.position.set(-1.8, 0.02, 0); arenaGroup.add(b4);
+
+    /* ==========================================================================
+       5. CEILING VISION SYSTEM & VISION DESK STATION
+       ========================================================================== */
+    const visionStationGroup = new THREE.Group();
+    scene.add(visionStationGroup);
+
+    // Overhead 120 FPS OV9281 Camera at y = 3.2m
+    const cameraMount = new THREE.Group();
+    cameraMount.position.set(0, 3.2, 0);
+
+    // Camera Body & Lens
+    const camBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.08, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 })
+    );
+    const camLens = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.035, 0.05, 24),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.1 })
+    );
+    camLens.rotation.x = Math.PI;
+    camLens.position.y = -0.05;
+    cameraMount.add(camBody, camLens);
+
+    // Camera Status LED (Blinking Blue/Cyan)
+    const camLed = new THREE.Mesh(
+      new THREE.SphereGeometry(0.008, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0x00d2ff })
+    );
+    camLed.position.set(0.04, -0.03, 0.04);
+    cameraMount.add(camLed);
+
+    // Ceiling Bracket Arms
+    const bracketGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.3, 12);
+    const bracketMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7 });
+    const br1 = new THREE.Mesh(bracketGeo, bracketMat);
+    br1.position.y = 0.15;
+    cameraMount.add(br1);
+    visionStationGroup.add(cameraMount);
+
+    // Planar Homography / Camera FOV Frustum Cone (translucent purple wireframe/volume)
+    const fovConeGeo = new THREE.ConeGeometry(2.3, 3.2, 4, 1, true);
+    fovConeGeo.rotateY(Math.PI / 4);
+    const fovConeMat = new THREE.MeshBasicMaterial({
+      color: 0xa855f7,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.12
+    });
+    const fovCone = new THREE.Mesh(fovConeGeo, fovConeMat);
+    fovCone.position.set(0, 1.6, 0);
+    visionStationGroup.add(fovCone);
+
+    // Side Vision Desk with Laptop running OpenCV MOG2 & ESP32 #1 USB Dongle
+    const deskGroup = new THREE.Group();
+    deskGroup.position.set(2.2, 0, 0);
+    deskGroup.rotation.y = -Math.PI / 2;
+
+    // Table
+    const tableTop = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.04, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 })
+    );
+    tableTop.position.set(0, 0.72, 0);
+    tableTop.castShadow = true;
+    tableTop.receiveShadow = true;
+    deskGroup.add(tableTop);
+
+    // Table Legs
+    const legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.7, 12);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8 });
+    [[-0.3, -0.48], [0.3, -0.48], [-0.3, 0.48], [0.3, 0.48]].forEach(([x, z]) => {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(x, 0.35, z);
+      leg.castShadow = true;
+      deskGroup.add(leg);
+    });
+
+    // Laptop Base & Screen
+    const lapBase = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.012, 0.38),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.3 })
+    );
+    lapBase.position.set(0, 0.746, 0);
+    deskGroup.add(lapBase);
+
+    const lapScreenGroup = new THREE.Group();
+    lapScreenGroup.position.set(-0.13, 0.75, 0);
+    lapScreenGroup.rotation.z = 0.35; // Tilted open screen
+    const lapScreenBezel = new THREE.Mesh(
+      new THREE.BoxGeometry(0.01, 0.24, 0.38),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.7 })
+    );
+    lapScreenBezel.position.y = 0.12;
+
+    // Simulated OpenCV MOG2 Screen Texture (Canvas)
+    const cvCanvas = document.createElement('canvas');
+    cvCanvas.width = 256;
+    cvCanvas.height = 160;
+    const cvCtx = cvCanvas.getContext('2d');
+    cvCtx.fillStyle = '#050914';
+    cvCtx.fillRect(0, 0, 256, 160);
+    cvCtx.strokeStyle = '#00d2ff';
+    cvCtx.lineWidth = 2;
+    cvCtx.strokeRect(10, 10, 236, 140);
+    cvCtx.fillStyle = '#22c55e';
+    cvCtx.font = '12px monospace';
+    cvCtx.fillText('OPENCV MOG2: 120 FPS', 20, 30);
+    cvCtx.fillStyle = '#94a3b8';
+    cvCtx.font = '10px monospace';
+    cvCtx.fillText('HOMOGRAPHY: READY [3x3m]', 20, 50);
+    cvCtx.fillText('ESP-NOW: LINKED 2.4GHz', 20, 68);
+    cvCtx.strokeStyle = '#a855f7';
+    cvCtx.beginPath();
+    cvCtx.arc(128, 100, 24, 0, Math.PI * 2);
+    cvCtx.stroke();
+    cvCtx.fillStyle = '#38bdf8';
+    cvCtx.fillText('TRACK: LOCK', 105, 104);
+
+    const cvTexture = new THREE.CanvasTexture(cvCanvas);
+    const lapDisplay = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.36, 0.22),
+      new THREE.MeshBasicMaterial({ map: cvTexture })
+    );
+    lapDisplay.rotation.y = Math.PI / 2;
+    lapDisplay.position.set(0.006, 0.12, 0);
+    lapScreenGroup.add(lapScreenBezel, lapDisplay);
+    deskGroup.add(lapScreenGroup);
+
+    // ESP32 #1 USB Dongle & Antenna on Laptop Side
+    const dongleMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.01, 0.025),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.6 })
+    );
+    dongleMesh.position.set(0.08, 0.748, 0.23);
+    const antennaMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.002, 0.002, 0.08, 8),
+      new THREE.MeshStandardMaterial({ color: 0x000000 })
+    );
+    antennaMesh.position.set(0.10, 0.78, 0.23);
+    deskGroup.add(dongleMesh, antennaMesh);
+    visionStationGroup.add(deskGroup);
+
+    // Visible Purple ESP-NOW Radio Pulse Line (flashes during radio send)
+    const radioPulseGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(2.1, 0.78, 0.23),
+      new THREE.Vector3(0, 0.3, 0)
+    ]);
+    const radioPulseMat = new THREE.LineDashedMaterial({
+      color: 0xc084fc,
+      dashSize: 0.08,
+      gapSize: 0.04,
+      transparent: true,
+      opacity: 0.0,
+      linewidth: 3
+    });
+    const radioPulseLine = new THREE.Line(radioPulseGeo, radioPulseMat);
+    radioPulseLine.computeLineDistances();
+    scene.add(radioPulseLine);
+
+    // Radio Wave Expansion Spheres (Visual Broadcast)
+    const radioWaveMat = new THREE.MeshBasicMaterial({
+      color: 0xc084fc,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.0
+    });
+    const radioWaveMesh = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), radioWaveMat);
+    radioWaveMesh.position.set(2.1, 0.78, 0.23);
+    scene.add(radioWaveMesh);
+
+    /* ==========================================================================
+       6. DETAILED 3D CAD MODEL ASSEMBLY (`robotRoot`)
+       ========================================================================== */
+    const robotRoot = new THREE.Group();
+    scene.add(robotRoot);
+
+    // Exploded View Component Tracking Array
+    const explodedComponents = [];
+
+    // Materials Palette for CAD Model
+    const matCarbon = new THREE.MeshStandardMaterial({
+      color: 0x181e29,
+      roughness: 0.45,
+      metalness: 0.35,
+    });
+    const matBrass = new THREE.MeshStandardMaterial({
+      color: 0xd4af37,
+      roughness: 0.3,
+      metalness: 0.85
+    });
+    const matAluminum = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+    const matDarkAlu = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.3,
+      metalness: 0.8
+    });
+    const matRubber = new THREE.MeshStandardMaterial({
+      color: 0x111827,
+      roughness: 0.9,
+      metalness: 0.05
+    });
+    const matCopper = new THREE.MeshStandardMaterial({
+      color: 0xb45309,
+      roughness: 0.4,
+      metalness: 0.8
+    });
+    const matLiPoOrange = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      roughness: 0.4,
+      metalness: 0.1
+    });
+    const matPCB = new THREE.MeshStandardMaterial({
+      color: 0x065f46,
+      roughness: 0.35,
+      metalness: 0.3
+    });
+    const matVescHeatsink = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+
+    // Outer Bin Translucent Frosted Plastic Material
+    const binNormalMat = new THREE.MeshPhysicalMaterial({
+      color: 0xf1f5f9,
+      transmission: 0.75,
+      opacity: 0.85,
+      transparent: true,
+      roughness: 0.18,
+      ior: 1.48,
+      thickness: 0.015,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const binXRayMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.DoubleSide
+    });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 1: Lower Chassis Deck (y = 0.065m, D = 36cm)
+    // -------------------------------------------------------------
+    const lowerDeckGroup = new THREE.Group();
+    lowerDeckGroup.position.y = 0.065;
+    lowerDeckGroup.name = "chassis";
+
+    // 36cm circular plate with center cutout & bevel
+    const lowerPlateGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.005, 48);
+    const lowerPlate = new THREE.Mesh(lowerPlateGeo, matCarbon);
+    lowerPlate.castShadow = true;
+    lowerPlate.receiveShadow = true;
+    lowerDeckGroup.add(lowerPlate);
+
+    // Motor mounting slots & aesthetic chassis perforations
+    for (let i = 0; i < 3; i++) {
+      const angle = (i * 2 * Math.PI) / 3;
+      const slot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.006, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a })
+      );
+      slot.position.set(Math.cos(angle) * 0.12, 0.001, Math.sin(angle) * 0.12);
+      slot.rotation.y = -angle;
+      lowerDeckGroup.add(slot);
+    }
+    robotRoot.add(lowerDeckGroup);
+    explodedComponents.push({ group: lowerDeckGroup, basePos: lowerDeckGroup.position.clone(), explodeDir: new THREE.Vector3(0, 0, 0), factor: 0.0 });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 2: Upper Collar Deck (y = 0.155m) & Standoffs
+    // -------------------------------------------------------------
+    const upperDeckGroup = new THREE.Group();
+    upperDeckGroup.position.y = 0.155;
+    upperDeckGroup.name = "chassis";
+
+    // Upper ring collar plate (inner hole for bin tapering)
+    const upperPlateGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.005, 48);
+    const upperPlate = new THREE.Mesh(upperPlateGeo, matCarbon);
+    upperPlate.castShadow = true;
+    upperPlate.receiveShadow = true;
+    upperDeckGroup.add(upperPlate);
+
+    robotRoot.add(upperDeckGroup);
+    explodedComponents.push({ group: upperDeckGroup, basePos: upperDeckGroup.position.clone(), explodeDir: new THREE.Vector3(0, 1, 0), factor: 0.22 });
+
+    // 4x Brass Hex Standoffs connecting lower and upper decks
+    const standoffsGroup = new THREE.Group();
+    standoffsGroup.name = "chassis";
+    const standoffGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.085, 6); // Hexagonal prism
+    [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4].forEach((a) => {
+      const so = new THREE.Mesh(standoffGeo, matBrass);
+      so.position.set(Math.cos(a) * 0.15, 0.11, Math.sin(a) * 0.15);
+      so.castShadow = true;
+      standoffsGroup.add(so);
+    });
+    robotRoot.add(standoffsGroup);
+    explodedComponents.push({ group: standoffsGroup, basePos: standoffsGroup.position.clone(), explodeDir: new THREE.Vector3(0, 1, 0), factor: 0.11 });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 3: 3-Wheel 120° Kiwi Holonomic Drive
+    // -------------------------------------------------------------
+    const wheelModules = [];
+
+    // Helper: Build a 100mm Double Aluminium Omni Wheel with visible perimeter rollers
+    function createOmniWheel() {
+      const wheelAssembly = new THREE.Group();
+      const WIDTH = 0.034;
+
+      // Central Aluminum Hub & Two Flange Plates
+      const hubGeo = new THREE.CylinderGeometry(0.040, 0.040, WIDTH * 0.4, 24);
+      hubGeo.rotateZ(Math.PI / 2);
+      const hub = new THREE.Mesh(hubGeo, matAluminum);
+      hub.castShadow = true;
+      wheelAssembly.add(hub);
+
+      // Flange Plates
+      [-WIDTH * 0.45, WIDTH * 0.45].forEach(xOff => {
+        const flange = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.046, 0.046, 0.003, 24).rotateZ(Math.PI / 2),
+          matDarkAlu
+        );
+        flange.position.x = xOff;
+        wheelAssembly.add(flange);
+      });
+
+      // Dual-Row Rubber Barrel Rollers along circumference (10 per row, staggered)
+      const ROLLERS_PER_ROW = 10;
+      const rollerGeo = new THREE.CylinderGeometry(0.007, 0.006, 0.012, 12);
+      rollerGeo.rotateX(Math.PI / 2);
+
+      // Row 1 (Left row)
+      for (let i = 0; i < ROLLERS_PER_ROW; i++) {
+        const phi = (i * 2 * Math.PI) / ROLLERS_PER_ROW;
+        const roller = new THREE.Mesh(rollerGeo, matRubber);
+        roller.position.set(-WIDTH * 0.25, Math.cos(phi) * 0.044, Math.sin(phi) * 0.044);
+        roller.rotation.x = phi;
+        wheelAssembly.add(roller);
+      }
+      // Row 2 (Right row, staggered by half step)
+      for (let i = 0; i < ROLLERS_PER_ROW; i++) {
+        const phi = (i * 2 * Math.PI) / ROLLERS_PER_ROW + (Math.PI / ROLLERS_PER_ROW);
+        const roller = new THREE.Mesh(rollerGeo, matRubber);
+        roller.position.set(WIDTH * 0.25, Math.cos(phi) * 0.044, Math.sin(phi) * 0.044);
+        roller.rotation.x = phi;
+        wheelAssembly.add(roller);
+      }
+
+      // Stainless Steel Axle Shaft & 45T HTD Timing Pulley
+      const shaftGeo = new THREE.CylinderGeometry(0.004, 0.004, WIDTH + 0.03, 16).rotateZ(Math.PI / 2);
+      const shaft = new THREE.Mesh(shaftGeo, matAluminum);
+      wheelAssembly.add(shaft);
+
+      const pulleyGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.010, 24).rotateZ(Math.PI / 2);
+      const pulley = new THREE.Mesh(pulleyGeo, matAluminum);
+      pulley.position.x = -WIDTH * 0.5 - 0.008;
+      wheelAssembly.add(pulley);
+
+      return { root: wheelAssembly, hub: hub };
+    }
+
+    // Helper: Build 5010 360KV Brushless Outrunner Motor & 3:1 Timing Belt
+    function createMotorAssembly() {
+      const motorGroup = new THREE.Group();
+      motorGroup.name = "motors";
+
+      // Motor Stator Mount Bracket (CNC Aluminum)
+      const mount = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.004, 0.045),
+        matAluminum
+      );
+      mount.position.y = -0.015;
+      motorGroup.add(mount);
+
+      // Rotor Outer Bell (50mm dia, 10mm height)
+      const bellGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.018, 24);
+      const bell = new THREE.Mesh(bellGeo, matDarkAlu);
+      motorGroup.add(bell);
+
+      // Visible Copper Stator Windings inside slots
+      const copperRing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.021, 0.021, 0.014, 18),
+        matCopper
+      );
+      motorGroup.add(copperRing);
+
+      // 15T Motor Pinion Pulley
+      const pinion = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.010, 16),
+        matAluminum
+      );
+      pinion.position.y = 0.014;
+      motorGroup.add(pinion);
+
+      return motorGroup;
+    }
+
+    // Instantiate 3 Kiwi wheel-motor drive modules at 0°, 120°, 240°
+    const WHEEL_ANGLES = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3]; // 0°, 120°, 240°
+    const DRIVE_RADIUS = 0.155; // Distance from chassis center to wheel contact
+
+    WHEEL_ANGLES.forEach((angle, idx) => {
+      const driveUnit = new THREE.Group();
+      driveUnit.name = "wheels";
+
+      // Position unit at 120° radius
+      const posX = Math.cos(angle) * DRIVE_RADIUS;
+      const posZ = Math.sin(angle) * DRIVE_RADIUS;
+      driveUnit.position.set(posX, 0.050, posZ);
+      // Tangential alignment: wheel rolls along tangent vector
+      driveUnit.rotation.y = -angle;
+
+      // Wheel
+      const wheelData = createOmniWheel();
+      driveUnit.add(wheelData.root);
+
+      // Motor (placed inboard toward chassis center)
+      const motor = createMotorAssembly();
+      motor.position.set(0, 0.035, -0.045);
+      motor.rotation.x = Math.PI / 2;
+      driveUnit.add(motor);
+
+      // HTD Timing Belt connecting motor pinion to wheel pulley
+      const beltGeo = new THREE.BoxGeometry(0.004, 0.008, 0.055);
+      const belt = new THREE.Mesh(beltGeo, matRubber);
+      belt.position.set(-0.024, 0.018, -0.022);
+      belt.rotation.x = -0.55;
+      driveUnit.add(belt);
+
+      robotRoot.add(driveUnit);
+      wheelModules.push({ unit: driveUnit, wheelMesh: wheelData.root, angle: angle, idx: idx });
+
+      // Radial explode vector for exploded view
+      const radialDir = new THREE.Vector3(Math.cos(angle), 0.1, Math.sin(angle)).normalize();
+      explodedComponents.push({ group: driveUnit, basePos: driveUnit.position.clone(), explodeDir: radialDir, factor: 0.15 });
+    });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 4: Direct 6S LiPo Power Pack (Ultra-Low Center of Gravity)
+    // -------------------------------------------------------------
+    const batteryGroup = new THREE.Group();
+    batteryGroup.position.set(0, 0.075, 0); // Flat on center of lower deck
+    batteryGroup.name = "battery";
+
+    // LiPo Pack (22.2V 2200mAh 45C - Orange shrink wrap)
+    const lipoGeo = new THREE.BoxGeometry(0.115, 0.034, 0.045);
+    const lipoMesh = new THREE.Mesh(lipoGeo, matLiPoOrange);
+    lipoMesh.castShadow = true;
+    batteryGroup.add(lipoMesh);
+
+    // Velcro battery tie-down strap
+    const strapGeo = new THREE.BoxGeometry(0.12, 0.036, 0.016);
+    const strapMesh = new THREE.Mesh(strapGeo, matRubber);
+    batteryGroup.add(strapMesh);
+
+    // Yellow XT60 High-Current Connector & 12AWG Silicone Leads
+    const xt60Geo = new THREE.BoxGeometry(0.016, 0.012, 0.008);
+    const xt60Mesh = new THREE.Mesh(xt60Geo, new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 }));
+    xt60Mesh.position.set(0.065, 0, 0);
+    batteryGroup.add(xt60Mesh);
+
+    robotRoot.add(batteryGroup);
+    explodedComponents.push({ group: batteryGroup, basePos: batteryGroup.position.clone(), explodeDir: new THREE.Vector3(0, 1, 0), factor: 0.04 });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 5: Lower Electronics Deck
+    // (3x VESC Mini FOC, ESP32 #2, LM2596S Buck, 1.5KE27A TVS & Cap)
+    // -------------------------------------------------------------
+    const electronicsGroup = new THREE.Group();
+    electronicsGroup.position.set(0, 0.105, 0);
+    electronicsGroup.name = "electronics";
+
+    // 3x VESC Mini FOC Controllers (Blue anodized heatsinks mounted radially)
+    for (let i = 0; i < 3; i++) {
+      const a = (i * 2 * Math.PI) / 3 + Math.PI / 6;
+      const vesc = new THREE.Mesh(
+        new THREE.BoxGeometry(0.038, 0.012, 0.030),
+        matVescHeatsink
+      );
+      vesc.position.set(Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08);
+      vesc.rotation.y = -a;
+      electronicsGroup.add(vesc);
+    }
+
+    // ESP32 #2 Receiver Module (Green PCB with metal shield CAN)
+    const espPcb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.026, 0.003, 0.048),
+      matPCB
+    );
+    espPcb.position.set(-0.025, 0, 0);
+    const espCan = new THREE.Mesh(
+      new THREE.BoxGeometry(0.018, 0.004, 0.020),
+      matAluminum
+    );
+    espCan.position.set(-0.025, 0.003, -0.005);
+    electronicsGroup.add(espPcb, espCan);
+
+    // LM2596S 5V DC-DC Buck Converter (Blue PCB with toroidal inductor coil)
+    const buckPcb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.042, 0.003, 0.020),
+      new THREE.MeshStandardMaterial({ color: 0x1d4ed8 })
+    );
+    buckPcb.position.set(0.035, 0, 0.04);
+    const inductor = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.006, 0.006, 0.008, 12),
+      matCopper
+    );
+    inductor.position.set(0.035, 0.005, 0.04);
+    electronicsGroup.add(buckPcb, inductor);
+
+    // 1.5KE27A TVS Diode & 1000µF Low-ESR Electrolytic Capacitor
+    const capMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.005, 0.005, 0.018, 12),
+      new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 })
+    );
+    capMesh.position.set(0.04, 0.01, -0.03);
+    electronicsGroup.add(capMesh);
+
+    robotRoot.add(electronicsGroup);
+    explodedComponents.push({ group: electronicsGroup, basePos: electronicsGroup.position.clone(), explodeDir: new THREE.Vector3(0, 1, 0), factor: 0.08 });
+
+    // -------------------------------------------------------------
+    // SUB-ASSEMBLY 6: Catch Basket & ArUco Rim Marker
+    // -------------------------------------------------------------
+    const basketGroup = new THREE.Group();
+    // Base is at y = 0.16m, top rim at y = 0.568m (height = 0.408m)
+    const BASKET_HEIGHT = RIM_HEIGHT - 0.160; // 0.408m
+    basketGroup.position.set(0, 0.160 + BASKET_HEIGHT / 2, 0);
+    basketGroup.name = "basket";
+
+    // Tapered Frosted Polycarbonate Bin
+    // Top mouth diameter: 30 cm (r = 0.15m), bottom base: 22 cm (r = 0.11m)
+    const binGeo = new THREE.CylinderGeometry(RIM_RADIUS, 0.11, BASKET_HEIGHT, 48, 1, true);
+    const binMesh = new THREE.Mesh(binGeo, binNormalMat);
+    binMesh.castShadow = true;
+    binMesh.receiveShadow = true;
+    basketGroup.add(binMesh);
+
+    // Reinforced Top Rim Ring (Plastic molding)
+    const rimTorusGeo = new THREE.TorusGeometry(RIM_RADIUS, 0.007, 16, 48);
+    rimTorusGeo.rotateX(Math.PI / 2);
+    const rimRing = new THREE.Mesh(rimTorusGeo, new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.4 }));
+    rimRing.position.y = BASKET_HEIGHT / 2;
+    basketGroup.add(rimRing);
+
+    // Internal Solid Floor Plate inside basket
+    const innerFloorGeo = new THREE.CylinderGeometry(0.108, 0.108, 0.004, 32);
+    const innerFloor = new THREE.Mesh(innerFloorGeo, matCarbon);
+    innerFloor.position.y = -BASKET_HEIGHT / 2 + 0.005;
+    basketGroup.add(innerFloor);
+
+    // High-Contrast ArUco Fiducial Marker on Bin Rim
+    const arucoCanvas = document.createElement('canvas');
+    arucoCanvas.width = 128;
+    arucoCanvas.height = 128;
+    const aCtx = arucoCanvas.getContext('2d');
+    aCtx.fillStyle = '#ffffff';
+    aCtx.fillRect(0, 0, 128, 128);
+    aCtx.fillStyle = '#000000';
+    // Outer black border
+    aCtx.fillRect(12, 12, 104, 104);
+    aCtx.fillStyle = '#ffffff';
+    // ArUco 4x4 bits
+    const bitMap = [
+      [1, 0, 1, 0],
+      [0, 1, 1, 1],
+      [1, 1, 0, 1],
+      [0, 0, 1, 0]
+    ];
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        if (bitMap[r][c] === 1) {
+          aCtx.fillRect(24 + c * 20, 24 + r * 20, 20, 20);
+        }
+      }
+    }
+    const arucoTexture = new THREE.CanvasTexture(arucoCanvas);
+    const arucoGeo = new THREE.PlaneGeometry(0.045, 0.045);
+    const arucoMat = new THREE.MeshBasicMaterial({ map: arucoTexture, side: THREE.DoubleSide });
+    const arucoMarker = new THREE.Mesh(arucoGeo, arucoMat);
+    arucoMarker.rotation.x = -Math.PI / 2;
+    arucoMarker.position.set(0, BASKET_HEIGHT / 2 + 0.008, -RIM_RADIUS + 0.025);
+    basketGroup.add(arucoMarker);
+
+    robotRoot.add(basketGroup);
+    explodedComponents.push({ group: basketGroup, basePos: basketGroup.position.clone(), explodeDir: new THREE.Vector3(0, 1, 0), factor: 0.45 });
+
+    /* ==========================================================================
+       7. TARGET INTERCEPT RINGS & TRAJECTORY RENDERERS
+       ========================================================================== */
+    // Dynamic Amber/Green Intercept Ring at Rim Plane (y = 0.568m)
+    const targetRingGeo = new THREE.RingGeometry(RIM_RADIUS - 0.006, RIM_RADIUS + 0.006, 48);
+    const targetRingMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b, // Amber during 0-95ms, Green at 210ms
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.0
+    });
+    const targetRing = new THREE.Mesh(targetRingGeo, targetRingMat);
+    targetRing.rotation.x = -Math.PI / 2;
+    targetRing.position.y = RIM_HEIGHT + 0.002;
+    scene.add(targetRing);
+
+    // Target Ground Projection Pillar / Guideline
+    const targetPillarGeo = new THREE.CylinderGeometry(0.003, 0.003, RIM_HEIGHT, 8);
+    const targetPillarMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.0 });
+    const targetPillar = new THREE.Mesh(targetPillarGeo, targetPillarMat);
+    targetPillar.position.y = RIM_HEIGHT / 2;
+    scene.add(targetPillar);
+
+    // Trajectory 1: Grey Dashed Vacuum Parabola (zero-drag theoretical)
+    const vacuumTrajectoryMat = new THREE.LineDashedMaterial({
+      color: 0x94a3b8,
+      dashSize: 0.06,
+      gapSize: 0.04,
+      transparent: true,
+      opacity: 0.75,
+      linewidth: 2
+    });
+    const vacuumLineGeo = new THREE.BufferGeometry();
+    const vacuumLine = new THREE.Line(vacuumLineGeo, vacuumTrajectoryMat);
+    scene.add(vacuumLine);
+
+    // Trajectory 2: Cyan Drag-Decayed Trajectory (True Aerodynamics)
+    const dragTrajectoryMat = new THREE.LineBasicMaterial({
+      color: 0x00d2ff,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.95
+    });
+    const dragLineGeo = new THREE.BufferGeometry();
+    const dragLine = new THREE.Line(dragLineGeo, dragTrajectoryMat);
+    scene.add(dragLine);
+
+    // -------------------------------------------------------------
+    // PAPER BALL MESH & DYNAMICS STATE
+    // -------------------------------------------------------------
+    // Crumpled Paper Ball Mesh (4.5g, r = 3.5cm)
+    const paperGeo = new THREE.DodecahedronGeometry(BALL_RADIUS, 1);
+    // Perturb vertices slightly for realistic crumpled paper crinkles
+    const posAttr = paperGeo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const vx = posAttr.getX(i);
+      const vy = posAttr.getY(i);
+      const vz = posAttr.getZ(i);
+      const factor = 1.0 + (Math.random() - 0.5) * 0.22;
+      posAttr.setXYZ(i, vx * factor, vy * factor, vz * factor);
+    }
+    paperGeo.computeVertexNormals();
+
+    const paperMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.95,
+      metalness: 0.05
+    });
+    const ballMesh = new THREE.Mesh(paperGeo, paperMat);
+    ballMesh.castShadow = true;
+    ballMesh.visible = false;
+    scene.add(ballMesh);
+
+    /* ==========================================================================
+       8. SIMULATION STATE & REAL-TIME PHYSICS ENGINE
+       ========================================================================== */
+    const State = {
+      // Robot Kinematics State
+      robotPos: new THREE.Vector2(0, 0),        // (X, Z) on ground
+      robotVel: new THREE.Vector2(0, 0),        // (Vx, Vz)
+      robotAccel: new THREE.Vector2(0, 0),      // (Ax, Az)
+      robotTarget: new THREE.Vector2(0, 0),     // Commanded intercept coordinate
+      chassisTilt: new THREE.Vector2(0, 0),     // Dynamic pitch & roll inertia
+      wheelRpms: [0, 0, 0],
+
+      // Ball Dynamic State
+      ballActive: false,
+      ballPos: new THREE.Vector3(),
+      ballVel: new THREE.Vector3(),
+      ballPassedRim: false,
+      ballInBasket: false,
+      ballSettled: false,
+      ballFlightTime: 0,
+
+      // Target Prediction & Vision Latency State
+      interceptCalculated: false,
+      actualIntercept: new THREE.Vector3(),    // True point where ball crosses y = 0.568m
+      predictedTarget: new THREE.Vector2(),    // Noisy target known to robot
+      visionDelayTimer: 0,
+      hasSentRefinedPacket: false,
+
+      // Overall System State
+      systemStatus: 'IDLE', // 'IDLE', 'OBSERVING', 'SPRINTING', 'CAUGHT', 'BOUNCE', 'MISS'
+      statusTimer: 0,
+
+      // Outcome Tallies
+      stats: {
+        throws: 0,
+        catches: 0,
+        bounces: 0,
+        misses: 0,
+        lastError: 0,
+        lastFlightTime: 0
+      },
+
+      // Sliders & Custom Throw Settings
+      manualSpeed: 3.2,
+      manualDist: 0.85,
+
+      // UI Controls
+      autoToss: false,
+      autoTossTimer: 0,
+      explodedVal: 0,
+      isXRay: false
+    };
+
+    /* ==========================================================================
+       9. NUMERICAL INTEGRATION FOR TRAJECTORIES (VACUUM VS. QUADRATIC DRAG)
+       ========================================================================== */
+    function computeTrajectories(p0, v0) {
+      const dt = 0.008; // 8ms fine step
+      const maxSteps = 400;
+
+      // 1. Drag Trajectory (True Aerodynamics)
+      const dragPoints = [];
+      let pDrag = p0.clone();
+      let vDrag = v0.clone();
+      let interceptFound = false;
+      let rimInterceptPoint = null;
+
+      for (let i = 0; i < maxSteps; i++) {
+        dragPoints.push(pDrag.clone());
+
+        // Check if crossing rim plane y = 0.568m descending
+        if (!interceptFound && vDrag.y < 0 && pDrag.y <= RIM_HEIGHT) {
+          const prevP = dragPoints[dragPoints.length - 2] || pDrag;
+          const alpha = (RIM_HEIGHT - prevP.y) / (pDrag.y - prevP.y);
+          rimInterceptPoint = new THREE.Vector3(
+            prevP.x + (pDrag.x - prevP.x) * alpha,
+            RIM_HEIGHT,
+            prevP.z + (pDrag.z - prevP.z) * alpha
+          );
+          interceptFound = true;
+        }
+
+        if (pDrag.y <= BALL_RADIUS) {
+          pDrag.y = BALL_RADIUS;
+          dragPoints.push(pDrag.clone());
+          break;
+        }
+
+        // F_drag = -0.5 * rho * Cd * A * |v| * v
+        const speed = vDrag.length();
+        const fDrag = vDrag.clone().multiplyScalar(-DRAG_FACTOR * speed);
+        const aDrag = fDrag.divideScalar(BALL_MASS);
+        aDrag.y -= G;
+
+        vDrag.addScaledVector(aDrag, dt);
+        pDrag.addScaledVector(vDrag, dt);
+      }
+
+      // 2. Vacuum Parabola (Idealized zero-drag)
+      const vacuumPoints = [];
+      let pVac = p0.clone();
+      let vVac = v0.clone();
+
+      for (let i = 0; i < maxSteps; i++) {
+        vacuumPoints.push(pVac.clone());
+        if (pVac.y <= BALL_RADIUS) {
+          pVac.y = BALL_RADIUS;
+          vacuumPoints.push(pVac.clone());
+          break;
+        }
+        vVac.y -= G * dt;
+        pVac.addScaledVector(vVac, dt);
+      }
+
+      // Update line renderers
+      vacuumLineGeo.setFromPoints(vacuumPoints);
+      vacuumLine.computeLineDistances();
+
+      dragLineGeo.setFromPoints(dragPoints);
+
+      // Calculate range loss percentage
+      const dragFinalXz = new THREE.Vector2(pDrag.x - p0.x, pDrag.z - p0.z).length();
+      const vacFinalXz = new THREE.Vector2(pVac.x - p0.x, pVac.z - p0.z).length();
+      const rangeLoss = ((vacFinalXz - dragFinalXz) / Math.max(0.01, vacFinalXz)) * 100;
+      document.getElementById('drag-loss-pct').textContent = `-${rangeLoss.toFixed(1)}% Range`;
+
+      return {
+        dragPoints,
+        vacuumPoints,
+        rimIntercept: rimInterceptPoint || new THREE.Vector3(pDrag.x, RIM_HEIGHT, pDrag.z)
+      };
+    }
+
+    /* ==========================================================================
+       10. TOSS ACTIONS (NORMAL, EXTREME, & MANUAL PARAMETERIZED)
+       ========================================================================== */
+    function throwTrash(isExtreme = false, customSpeed = null, customDist = null) {
+      if (State.ballActive) return; // Wait for current toss to conclude
+      initAudio();
+      playSound('throw');
+
+      const throwAngle = (Math.random() - 0.5) * 1.3;
+      let throwDist = customDist !== null ? customDist : (isExtreme ? (1.35 + Math.random() * 0.45) : (0.75 + Math.random() * 0.20));
+      let throwSpeed = customSpeed !== null ? customSpeed : (isExtreme ? (4.8 + Math.random() * 0.8) : (3.1 + Math.random() * 0.35));
+
+      // Start position: User standing at arena edge throwing inward
+      const p0 = new THREE.Vector3(
+        -Math.sin(throwAngle) * throwDist,
+        1.45 + (Math.random() - 0.5) * 0.15,
+        1.35 + Math.random() * 0.25
+      );
+
+      // Target direction towards current bin position plus intentional variance
+      const aimVariance = isExtreme ? 0.35 : 0.12;
+      const aimOffset = new THREE.Vector2(
+        (Math.random() - 0.5) * aimVariance,
+        (Math.random() - 0.5) * aimVariance
+      );
+      const targetXZ = new THREE.Vector2(State.robotPos.x, State.robotPos.y).add(aimOffset);
+      const dirXZ = targetXZ.clone().sub(new THREE.Vector2(p0.x, p0.z));
+      dirXZ.normalize();
+
+      // Launch velocity
+      const elevation = isExtreme ? 0.45 : 0.72; // Extreme throws are flatter & faster!
+      const v0 = new THREE.Vector3(
+        dirXZ.x * throwSpeed * Math.cos(elevation),
+        throwSpeed * Math.sin(elevation),
+        dirXZ.y * throwSpeed * Math.cos(elevation)
+      );
+
+      // Compute trajectories
+      const trajData = computeTrajectories(p0, v0);
+
+      // Set simulation state
+      State.ballActive = true;
+      State.ballPos.copy(p0);
+      State.ballVel.copy(v0);
+      ballMesh.position.copy(p0);
+      ballMesh.visible = true;
+      State.ballPassedRim = false;
+      State.ballInBasket = false;
+      State.ballSettled = false;
+      State.ballFlightTime = 0;
+
+      State.actualIntercept.copy(trajData.rimIntercept);
+      State.interceptCalculated = true;
+      State.visionDelayTimer = 0;
+      State.hasSentRefinedPacket = false;
+
+      // State engine: OBSERVING during initial 95 ms!
+      updateStateBadge('OBSERVING', 'OBSERVING 95ms');
+
+      // Initial noisy estimation (+-5.5cm jitter)
+      const noiseX = (Math.random() - 0.5) * 2 * NOISE_INITIAL;
+      const noiseZ = (Math.random() - 0.5) * 2 * NOISE_INITIAL;
+      State.predictedTarget.set(State.actualIntercept.x + noiseX, State.actualIntercept.z + noiseZ);
+
+      // Show amber target ring
+      targetRing.position.set(State.predictedTarget.x, RIM_HEIGHT + 0.002, State.predictedTarget.y);
+      targetRingMat.color.setHex(0xf59e0b); // Amber
+      targetRingMat.opacity = 0.85;
+      targetPillar.position.set(State.predictedTarget.x, RIM_HEIGHT / 2, State.predictedTarget.y);
+      targetPillarMat.color.setHex(0xf59e0b);
+      targetPillarMat.opacity = 0.4;
+
+      State.stats.throws++;
+      document.getElementById('header-throws').textContent = State.stats.throws;
+    }
+
+    /* ==========================================================================
+       11. PHYSICAL UPDATE LOOP (120 Hz SUB-STEP INTEGRATOR)
+       ========================================================================== */
+    const clock = new THREE.Clock();
+
+    function physicsSubStep(dt) {
+      // -------------------------------------------------------------
+      // A. BALL DYNAMICS & COLLISION DETECTION
+      // -------------------------------------------------------------
+      if (State.ballActive && !State.ballSettled) {
+        State.ballFlightTime += dt;
+
+        // Quadratic air drag: F_d = -0.5 * rho * Cd * A * |v| * v
+        const speed = State.ballVel.length();
+        const aDrag = State.ballVel.clone().multiplyScalar(-DRAG_FACTOR * speed / BALL_MASS);
+        aDrag.y -= G;
+
+        State.ballVel.addScaledVector(aDrag, dt);
+        State.ballPos.addScaledVector(State.ballVel, dt);
+        ballMesh.position.copy(State.ballPos);
+
+        // Rotation tumbling
+        ballMesh.rotation.x += State.ballVel.z * dt * 4;
+        ballMesh.rotation.z -= State.ballVel.x * dt * 4;
+
+        // Check Rim-Plane Crossing at y = 0.568m descending
+        if (!State.ballPassedRim && State.ballVel.y < 0 && State.ballPos.y <= RIM_HEIGHT) {
+          State.ballPassedRim = true;
+
+          // Measure horizontal error between ball center and bin center
+          const dx = State.ballPos.x - State.robotPos.x;
+          const dz = State.ballPos.z - State.robotPos.y;
+          const err = Math.sqrt(dx * dx + dz * dz);
+          State.stats.lastError = err;
+          State.stats.lastFlightTime = State.ballFlightTime;
+
+          document.getElementById('last-impact-error').textContent = `${(err * 100).toFixed(1)} cm`;
+          document.getElementById('last-flight-time').textContent = `${State.ballFlightTime.toFixed(2)} s`;
+
+          // 1. CLEAN CATCH (err <= 0.125m)
+          if (err <= CATCH_RADIUS) {
+            State.ballInBasket = true;
+            State.stats.catches++;
+            document.getElementById('stat-catches').textContent = State.stats.catches;
+            updateStateBadge('CAUGHT', 'CLEAN CATCH!');
+            playSound('catch');
+            showToast('Clean Catch!', `Ball landed inside basket with ${(err * 100).toFixed(1)} cm rim margin.`, 'success');
+
+            // Ball enters basket: damp velocity and trap inside bin
+            State.ballVel.x *= 0.25;
+            State.ballVel.z *= 0.25;
+            State.ballVel.y *= 0.4;
+          }
+          // 2. RIM BOUNCE (0.125m < err <= 0.175m)
+          else if (err <= BOUNCE_RADIUS) {
+            State.stats.bounces++;
+            document.getElementById('stat-bounces').textContent = State.stats.bounces;
+            updateStateBadge('BOUNCE', 'RIM BOUNCE!');
+            playSound('bounce');
+            showToast('Rim Bounce!', `Struck plastic rim at ${(err * 100).toFixed(1)} cm. Deflecting!`, 'warning');
+
+            // Ball rebounds off plastic rim (0.45 restitution + radial deflection)
+            const radDir = new THREE.Vector3(dx / err, 0.6, dz / err).normalize();
+            const dot = State.ballVel.dot(radDir);
+            State.ballVel.sub(radDir.clone().multiplyScalar(2 * dot)).multiplyScalar(0.45);
+            State.ballVel.y = Math.abs(State.ballVel.y) + 0.8; // Upward kick off rim
+          }
+          // 3. LATE MISS (err > 0.175m)
+          else {
+            State.stats.misses++;
+            document.getElementById('stat-misses').textContent = State.stats.misses;
+            updateStateBadge('MISS', 'LATE MISS!');
+            playSound('miss');
+            showToast('Late Miss!', `Missed bin by ${(err * 100).toFixed(1)} cm. Sprinted at full traction.`, 'danger');
+          }
+          updateCatchRateHUD();
+        }
+
+        // Bouncing inside basket or on floor
+        if (State.ballInBasket) {
+          // Inner floor of basket at y = 0.185m
+          const basketFloorY = 0.185;
+          if (State.ballPos.y <= basketFloorY) {
+            State.ballPos.y = basketFloorY;
+            State.ballVel.y = -State.ballVel.y * 0.25;
+            State.ballVel.x *= 0.5;
+            State.ballVel.z *= 0.5;
+            if (Math.abs(State.ballVel.y) < 0.05) {
+              State.ballSettled = true;
+              State.ballVel.set(0, 0, 0);
+            }
+          }
+          // Constrain ball to stay with robot once inside basket
+          const relX = State.ballPos.x - State.robotPos.x;
+          const relZ = State.ballPos.z - State.robotPos.y;
+          const rLimit = 0.10;
+          if (Math.sqrt(relX * relX + relZ * relZ) > rLimit) {
+            State.ballPos.x = State.robotPos.x + relX * 0.9;
+            State.ballPos.z = State.robotPos.y + relZ * 0.9;
+          }
+        } else {
+          // Bouncing on floor (y = BALL_RADIUS)
+          if (State.ballPos.y <= BALL_RADIUS) {
+            State.ballPos.y = BALL_RADIUS;
+            State.ballVel.y = -State.ballVel.y * 0.35; // Floor restitution
+            State.ballVel.x *= 0.75;
+            State.ballVel.z *= 0.75;
+            if (Math.abs(State.ballVel.y) < 0.08 && State.ballVel.length() < 0.12) {
+              State.ballSettled = true;
+              State.ballVel.set(0, 0, 0);
+            }
+          }
+        }
+      }
+
+      // -------------------------------------------------------------
+      // B. VISION PIPELINE LATENCY ENGINE & TARGET TRACKING
+      // -------------------------------------------------------------
+      if (State.ballActive) {
+        State.visionDelayTimer += dt;
+
+        // Stage 1: 0 to 95 ms - NO ROBOT MOTION!
+        if (State.visionDelayTimer < LATENCY_INITIAL) {
+          // Target ring jitters with high estimation noise
+          const jitterX = (Math.random() - 0.5) * 0.01;
+          const jitterZ = (Math.random() - 0.5) * 0.01;
+          targetRing.position.x += jitterX;
+          targetRing.position.z += jitterZ;
+          targetPillar.position.x = targetRing.position.x;
+          targetPillar.position.z = targetRing.position.z;
+          // Robot stays stationary during latency period
+          State.robotAccel.set(0, 0);
+        }
+        // Stage 2: t >= 95 ms - ESP-NOW Packet #1 Arrives -> SPRINT!
+        else {
+          if (State.systemStatus === 'OBSERVING') {
+            updateStateBadge('SPRINTING', 'SPRINTING');
+            playSound('radio');
+            triggerRadioPulse();
+          }
+
+          // Stage 3: t >= 210 ms - Mid-Flight Refinement Packet #2 Arrives
+          if (!State.hasSentRefinedPacket && State.visionDelayTimer >= LATENCY_REFINEMENT) {
+            State.hasSentRefinedPacket = true;
+            // Refine target coordinates: noise drops to +-1.6 cm!
+            const refNoiseX = (Math.random() - 0.5) * 2 * NOISE_REFINED;
+            const refNoiseZ = (Math.random() - 0.5) * 2 * NOISE_REFINED;
+            State.predictedTarget.set(State.actualIntercept.x + refNoiseX, State.actualIntercept.z + refNoiseZ);
+
+            // Ring turns green!
+            targetRingMat.color.setHex(0x10b981);
+            targetPillarMat.color.setHex(0x10b981);
+            targetRing.position.set(State.predictedTarget.x, RIM_HEIGHT + 0.002, State.predictedTarget.y);
+            targetPillar.position.set(State.predictedTarget.x, RIM_HEIGHT / 2, State.predictedTarget.y);
+            playSound('radio');
+            triggerRadioPulse();
+          }
+
+          // Commanded robot target
+          State.robotTarget.copy(State.predictedTarget);
+        }
+      }
+
+      // -------------------------------------------------------------
+      // C. ROBOT KINEMATICS, TRACTION LIMITS & PD SERVOING
+      // -------------------------------------------------------------
+      // Compute displacement vector to target
+      const toTarget = State.robotTarget.clone().sub(State.robotPos);
+      const distToTarget = toTarget.length();
+
+      // Desired velocity vector (PD controller with braking ramp)
+      let desiredVel = new THREE.Vector2(0, 0);
+
+      // Only move if there is a target and outside latency window
+      if (State.ballActive && State.visionDelayTimer >= LATENCY_INITIAL && distToTarget > 0.015) {
+        // Deceleration distance at A_MAX: d_stop = v^2 / (2 * a)
+        const maxReachableSpeed = Math.min(V_MAX, Math.sqrt(2 * A_MAX * distToTarget));
+        desiredVel = toTarget.clone().normalize().multiplyScalar(maxReachableSpeed);
+      } else if (!State.ballActive && State.robotPos.length() > 0.02) {
+        // Center bin return
+        const toCenter = new THREE.Vector2(0, 0).sub(State.robotPos);
+        const centerSpeed = Math.min(1.8, Math.sqrt(2 * 3.0 * toCenter.length()));
+        desiredVel = toCenter.clone().normalize().multiplyScalar(centerSpeed);
+      }
+
+      // Acceleration required to reach desired velocity
+      const deltaV = desiredVel.clone().sub(State.robotVel);
+      let commandedAccel = deltaV.divideScalar(dt);
+
+      // Hard clamp to tile traction limit: A_MAX = 5.5 m/s²
+      const accelMag = commandedAccel.length();
+      if (accelMag > A_MAX) {
+        commandedAccel.multiplyScalar(A_MAX / accelMag);
+      }
+      State.robotAccel.copy(commandedAccel);
+
+      // Wheel Slip & ArUco Correction Loop:
+      // Inject 5%–10% floor slip perturbation into velocity integration
+      const slipFactor = 1.0 - (Math.random() * 0.06); // 0-6% stochastic slip
+      State.robotVel.addScaledVector(State.robotAccel, dt);
+      State.robotVel.multiplyScalar(slipFactor);
+
+      // Clamp linear speed to top build limit: V_MAX = 5.0 m/s
+      const currentSpeed = State.robotVel.length();
+      if (currentSpeed > V_MAX) {
+        State.robotVel.multiplyScalar(V_MAX / currentSpeed);
+      }
+
+      // Integrate robot position
+      State.robotPos.addScaledVector(State.robotVel, dt);
+
+      // Arena boundary clamp (keep within 3m x 3m arena: +-1.35m)
+      State.robotPos.x = THREE.MathUtils.clamp(State.robotPos.x, -1.35, 1.35);
+      State.robotPos.y = THREE.MathUtils.clamp(State.robotPos.y, -1.35, 1.35);
+
+      // Update 3D robot root position
+      robotRoot.position.x = State.robotPos.x;
+      robotRoot.position.z = State.robotPos.y;
+
+      // -------------------------------------------------------------
+      // D. DYNAMIC CHASSIS TILT (INERTIA RESPONSE)
+      // -------------------------------------------------------------
+      // Inertial tilt angle proportional to acceleration vector (max +-0.08 rad)
+      const targetTiltPitch = THREE.MathUtils.clamp((State.robotAccel.y / G) * 0.12, -0.08, 0.08);
+      const targetTiltRoll = THREE.MathUtils.clamp((-State.robotAccel.x / G) * 0.12, -0.08, 0.08);
+
+      State.chassisTilt.x += (targetTiltPitch - State.chassisTilt.x) * 0.18;
+      State.chassisTilt.y += (targetTiltRoll - State.chassisTilt.y) * 0.18;
+
+      robotRoot.rotation.x = State.chassisTilt.x;
+      robotRoot.rotation.z = State.chassisTilt.y;
+
+      const totalTiltDeg = (Math.sqrt(State.chassisTilt.x * State.chassisTilt.x + State.chassisTilt.y * State.chassisTilt.y) * 180 / Math.PI).toFixed(1);
+      document.getElementById('chassis-tilt-val').textContent = `Tilt: ${totalTiltDeg}°`;
+
+      // -------------------------------------------------------------
+      // E. KIWI 3-WHEEL INVERSE KINEMATICS & RPM CALCULATION
+      // -------------------------------------------------------------
+      // Wheel angles: θ1 = 0°, θ2 = 120°, θ3 = 240°
+      // v_w,i = -v_x * sin(θ_i) + v_z * cos(θ_i)
+      const vx = State.robotVel.x;
+      const vz = State.robotVel.y;
+
+      const vWheel1 = -vx * Math.sin(WHEEL_ANGLES[0]) + vz * Math.cos(WHEEL_ANGLES[0]);
+      const vWheel2 = -vx * Math.sin(WHEEL_ANGLES[1]) + vz * Math.cos(WHEEL_ANGLES[1]);
+      const vWheel3 = -vx * Math.sin(WHEEL_ANGLES[2]) + vz * Math.cos(WHEEL_ANGLES[2]);
+
+      // RPM = (|v_w| / (2 * pi * r_w)) * 60
+      State.wheelRpms[0] = Math.round((Math.abs(vWheel1) / (2 * Math.PI * WHEEL_RADIUS)) * 60);
+      State.wheelRpms[1] = Math.round((Math.abs(vWheel2) / (2 * Math.PI * WHEEL_RADIUS)) * 60);
+      State.wheelRpms[2] = Math.round((Math.abs(vWheel3) / (2 * Math.PI * WHEEL_RADIUS)) * 60);
+
+      // Spin omni wheel 3D models accordingly
+      wheelModules.forEach((m, i) => {
+        const rpm = State.wheelRpms[i];
+        m.wheelMesh.rotation.x += (rpm / 60) * Math.PI * 2 * dt;
+      });
+    }
+
+    /* ==========================================================================
+       12. UI TELEMETRY UPDATES & STATE BADGES
+       ========================================================================== */
+    function updateHUD() {
+      const speed = State.robotVel.length();
+      const accel = State.robotAccel.length();
+
+      // Speed & Accel Numeric Displays
+      document.getElementById('telemetry-speed').textContent = speed.toFixed(2);
+      document.getElementById('telemetry-accel').textContent = accel.toFixed(2);
+
+      // Progress bars
+      document.getElementById('telemetry-speed-bar').style.width = `${Math.min(100, (speed / V_MAX) * 100)}%`;
+      document.getElementById('telemetry-accel-bar').style.width = `${Math.min(100, (accel / A_MAX) * 100)}%`;
+
+      // Wheel RPMs
+      document.getElementById('rpm-w1').textContent = `${State.wheelRpms[0]} RPM`;
+      document.getElementById('rpm-w2').textContent = `${State.wheelRpms[1]} RPM`;
+      document.getElementById('rpm-w3').textContent = `${State.wheelRpms[2]} RPM`;
+
+      document.getElementById('bar-w1').style.width = `${Math.min(100, (State.wheelRpms[0] / MAX_WHEEL_RPM) * 100)}%`;
+      document.getElementById('bar-w2').style.width = `${Math.min(100, (State.wheelRpms[1] / MAX_WHEEL_RPM) * 100)}%`;
+      document.getElementById('bar-w3').style.width = `${Math.min(100, (State.wheelRpms[2] / MAX_WHEEL_RPM) * 100)}%`;
+    }
+
+    function updateCatchRateHUD() {
+      const total = State.stats.throws;
+      const catches = State.stats.catches;
+      const rate = total > 0 ? ((catches / total) * 100).toFixed(1) : '83.3';
+
+      document.getElementById('header-catch-rate').textContent = `${rate}%`;
+      document.getElementById('header-catches').textContent = catches;
+      document.getElementById('header-throws').textContent = total;
+    }
+
+    function updateStateBadge(stateKey, labelText) {
+      State.systemStatus = stateKey;
+      const textElem = document.getElementById('status-badge-text');
+      const dotElem = document.getElementById('status-indicator-dot');
+      textElem.textContent = labelText;
+
+      // Color coding
+      if (stateKey === 'OBSERVING') {
+        textElem.className = 'text-xs font-mono font-bold text-amber-400';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse-fast';
+      } else if (stateKey === 'SPRINTING') {
+        textElem.className = 'text-xs font-mono font-bold text-cyan-400';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse';
+      } else if (stateKey === 'CAUGHT') {
+        textElem.className = 'text-xs font-mono font-bold text-emerald-400';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+      } else if (stateKey === 'BOUNCE') {
+        textElem.className = 'text-xs font-mono font-bold text-amber-500';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+      } else if (stateKey === 'MISS') {
+        textElem.className = 'text-xs font-mono font-bold text-rose-500';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+      } else {
+        textElem.className = 'text-xs font-mono font-bold text-slate-300';
+        dotElem.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+      }
+    }
+
+    // Radio Pulse Visual Beam (Desk to Robot) & Expanding Rings
+    function triggerRadioPulse() {
+      radioPulseMat.opacity = 0.95;
+      const positions = radioPulseGeo.attributes.position;
+      positions.setXYZ(0, 2.1, 0.78, 0.23);
+      positions.setXYZ(1, State.robotPos.x, 0.12, State.robotPos.y);
+      positions.needsUpdate = true;
+      radioPulseLine.computeLineDistances();
+
+      // Expanding wave sphere
+      radioWaveMesh.scale.set(1, 1, 1);
+      radioWaveMat.opacity = 0.85;
+
+      let waveT = 0;
+      function animateWave() {
+        waveT += 0.08;
+        radioWaveMesh.scale.setScalar(1 + waveT * 8);
+        radioWaveMat.opacity = Math.max(0, 0.85 - waveT);
+        if (waveT < 1.0) {
+          requestAnimationFrame(animateWave);
+        } else {
+          radioWaveMat.opacity = 0.0;
+        }
+      }
+      animateWave();
+
+      // Fade out beam after 180ms
+      setTimeout(() => {
+        radioPulseMat.opacity = 0.0;
+      }, 180);
+    }
+
+    // Toast Notification Utility
+    function showToast(title, msg, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'border-emerald-500 bg-slate-900/90 text-emerald-400 shadow-emerald-500/20',
+        warning: 'border-amber-500 bg-slate-900/90 text-amber-400 shadow-amber-500/20',
+        danger: 'border-rose-500 bg-slate-900/90 text-rose-400 shadow-rose-500/20',
+        info: 'border-cyan-500 bg-slate-900/90 text-cyan-400 shadow-cyan-500/20'
+      };
+      toast.className = `p-3 rounded-xl border glass-panel shadow-xl flex items-start gap-3 transition-all duration-300 transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+      toast.innerHTML = `
+        <div class="mt-0.5"><i class="fa-solid fa-circle-info"></i></div>
+        <div>
+          <div class="text-xs font-bold font-sans">${title}</div>
+          <div class="text-[11px] text-slate-300 font-sans mt-0.5 leading-snug">${msg}</div>
+        </div>
+      `;
+      const container = document.getElementById('toast-container');
+      container.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    /* ==========================================================================
+       13. EXPLODED VIEW & X-RAY SHELL CONTROLS
+       ========================================================================== */
+    function applyExplodedView(percentage) {
+      State.explodedVal = percentage / 100;
+      document.getElementById('exploded-val').textContent = `${percentage}%`;
+
+      explodedComponents.forEach(comp => {
+        const offset = comp.explodeDir.clone().multiplyScalar(comp.factor * State.explodedVal);
+        comp.group.position.copy(comp.basePos).add(offset);
+      });
+    }
+
+    function toggleXRayShell() {
+      State.isXRay = !State.isXRay;
+      binMesh.material = State.isXRay ? binXRayMat : binNormalMat;
+      document.getElementById('xray-label').textContent = `X-Ray: ${State.isXRay ? 'ON' : 'OFF'}`;
+      document.getElementById('xray-toggle-btn').classList.toggle('border-cyan-400', State.isXRay);
+    }
+
+    /* ==========================================================================
+       14. CAMERA PRESETS & SMOOTH TRANSITIONS
+       ========================================================================== */
+    function setCameraPreset(preset) {
+      let targetPos = new THREE.Vector3();
+      let targetLookAt = new THREE.Vector3(0, 0.35, 0);
+
+      switch (preset) {
+        case 'iso':
+          targetPos.set(2.8, 2.5, 3.2);
+          targetLookAt.set(0, 0.35, 0);
+          break;
+        case 'under':
+          targetPos.set(0.65, 0.12, 0.75);
+          targetLookAt.set(State.robotPos.x, 0.10, State.robotPos.y);
+          break;
+        case 'ceiling':
+          targetPos.set(0.01, 3.18, 0.01);
+          targetLookAt.set(0, 0, 0);
+          break;
+        case 'topdown':
+          targetPos.set(0.01, 3.0, 0);
+          targetLookAt.set(State.robotPos.x, 0.2, State.robotPos.y);
+          break;
+        case 'desk':
+          targetPos.set(2.6, 1.1, 0.6);
+          targetLookAt.set(1.8, 0.8, 0);
+          break;
+      }
+
+      // Smooth camera interpolation
+      const startPos = camera.position.clone();
+      const startLook = controls.target.clone();
+      let t = 0;
+
+      function animateCam() {
+        t += 0.04;
+        camera.position.lerpVectors(startPos, targetPos, THREE.MathUtils.smoothstep(t, 0, 1));
+        controls.target.lerpVectors(startLook, targetLookAt, THREE.MathUtils.smoothstep(t, 0, 1));
+        if (t < 1) {
+          requestAnimationFrame(animateCam);
+        }
+      }
+      animateCam();
+    }
+
+    /* ==========================================================================
+       15. 3D RAYCASTING & INTERACTION
+       ========================================================================== */
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    window.addEventListener('click', (e) => {
+      // Ignore clicks on HTML UI panels
+      if (e.target.closest('.glass-panel') || e.target.closest('button') || e.target.closest('input')) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects([robotRoot, visionStationGroup], true);
+      if (intersects.length > 0) {
+        // Find named parent
+        let obj = intersects[0].object;
+        while (obj && !obj.name && obj.parent) {
+          obj = obj.parent;
+        }
+        if (obj && obj.name) {
+          const item = document.querySelector(`.hw-item[data-part="${obj.name}"]`);
+          if (item) {
+            item.click();
+            sidebar.classList.remove('translate-x-full');
+          }
+        }
+      }
+    });
+
+    /* ==========================================================================
+       16. EVENT LISTENERS & UI WIRING
+       ========================================================================== */
+    // Throw Buttons
+    document.getElementById('throw-normal-btn').addEventListener('click', () => {
+      const customSpeed = parseFloat(document.getElementById('slider-speed').value);
+      const customDist = parseFloat(document.getElementById('slider-dist').value);
+      throwTrash(false, customSpeed, customDist);
+    });
+
+    document.getElementById('throw-extreme-btn').addEventListener('click', () => {
+      throwTrash(true);
+    });
+
+    // Sliders
+    const sliderSpeed = document.getElementById('slider-speed');
+    const sliderDist = document.getElementById('slider-dist');
+    sliderSpeed.addEventListener('input', (e) => {
+      document.getElementById('slider-speed-val').textContent = `${parseFloat(e.target.value).toFixed(1)} m/s`;
+    });
+    sliderDist.addEventListener('input', (e) => {
+      document.getElementById('slider-dist-val').textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+    });
+
+    // Audio Mute Toggle
+    document.getElementById('sound-toggle-btn').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      const icon = document.getElementById('sound-icon');
+      if (soundEnabled) {
+        icon.className = 'fa-solid fa-volume-high text-cyan-400';
+        initAudio();
+        showToast('Sound ON', 'Synthesized audio feedback enabled.', 'info');
+      } else {
+        icon.className = 'fa-solid fa-volume-xmark text-slate-500';
+        showToast('Sound Muted', 'Audio feedback disabled.', 'info');
+      }
+    });
+
+    // Auto-Toss Toggle
+    document.getElementById('auto-toss-btn').addEventListener('click', () => {
+      State.autoToss = !State.autoToss;
+      document.getElementById('auto-toss-label').textContent = `Auto: ${State.autoToss ? 'ON' : 'OFF'}`;
+      document.getElementById('auto-toss-btn').classList.toggle('bg-emerald-600/30', State.autoToss);
+      document.getElementById('auto-toss-btn').classList.toggle('border-emerald-500', State.autoToss);
+      if (State.autoToss) {
+        initAudio();
+        showToast('Auto-Toss Active', 'Throwing continuously with realistic Newtonian physics.', 'info');
+      }
+    });
+
+    // Center Bin
+    document.getElementById('center-bin-btn').addEventListener('click', () => {
+      State.robotTarget.set(0, 0);
+      showToast('Centering Robot', 'Returning trash can to coordinate origin (0, 0).', 'info');
+    });
+
+    // Exploded View Slider
+    document.getElementById('exploded-slider').addEventListener('input', (e) => {
+      applyExplodedView(parseInt(e.target.value, 10));
+    });
+
+    // X-Ray Toggle
+    document.getElementById('xray-toggle-btn').addEventListener('click', toggleXRayShell);
+
+    // Camera Preset Buttons
+    document.querySelectorAll('.cam-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setCameraPreset(btn.dataset.cam);
+      });
+    });
+
+    // Sidebar Slide-Out Toggle
+    const sidebar = document.getElementById('sidebar-panel');
+    document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
+      sidebar.classList.toggle('translate-x-full');
+    });
+    document.getElementById('close-sidebar-btn').addEventListener('click', () => {
+      sidebar.classList.add('translate-x-full');
+    });
+
+    // Sidebar Tab Switching
+    const tabHwBtn = document.getElementById('tab-hw-btn');
+    const tabAuditBtn = document.getElementById('tab-audit-btn');
+    const tabHwContent = document.getElementById('tab-hw-content');
+    const tabAuditContent = document.getElementById('tab-audit-content');
+
+    tabHwBtn.addEventListener('click', () => {
+      tabHwBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition';
+      tabAuditBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-200 transition';
+      tabHwContent.classList.remove('hidden');
+      tabAuditContent.classList.add('hidden');
+    });
+
+    tabAuditBtn.addEventListener('click', () => {
+      tabAuditBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30 transition';
+      tabHwBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-200 transition';
+      tabAuditContent.classList.remove('hidden');
+      tabHwContent.classList.add('hidden');
+    });
+
+    // Hardware Inspector Part Click -> Focus Camera & Highlight
+    document.querySelectorAll('.hw-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const part = item.dataset.part;
+        let lookAtY = 0.15;
+
+        if (part === 'chassis' || part === 'battery') lookAtY = 0.08;
+        if (part === 'motors' || part === 'wheels') lookAtY = 0.06;
+        if (part === 'basket') lookAtY = 0.40;
+        if (part === 'vision') {
+          setCameraPreset('ceiling');
+          return;
+        }
+
+        const targetPos = new THREE.Vector3(
+          State.robotPos.x + 0.65,
+          lookAtY + 0.35,
+          State.robotPos.y + 0.65
+        );
+        const targetLook = new THREE.Vector3(State.robotPos.x, lookAtY, State.robotPos.y);
+
+        // Smooth move
+        const startPos = camera.position.clone();
+        const startLook = controls.target.clone();
+        let t = 0;
+        function anim() {
+          t += 0.05;
+          camera.position.lerpVectors(startPos, targetPos, THREE.MathUtils.smoothstep(t, 0, 1));
+          controls.target.lerpVectors(startLook, targetLook, THREE.MathUtils.smoothstep(t, 0, 1));
+          if (t < 1) requestAnimationFrame(anim);
+        }
+        anim();
+
+        showToast('CAD Subsystem Focused', `Inspecting ${item.querySelector('.text-xs').textContent.trim()}`, 'info');
+      });
+    });
+
+    // Reset Stats Button
+    document.getElementById('reset-stats-btn').addEventListener('click', () => {
+      State.stats = { throws: 0, catches: 0, bounces: 0, misses: 0, lastError: 0, lastFlightTime: 0 };
+      document.getElementById('stat-catches').textContent = '0';
+      document.getElementById('stat-bounces').textContent = '0';
+      document.getElementById('stat-misses').textContent = '0';
+      document.getElementById('header-throws').textContent = '0';
+      document.getElementById('header-catches').textContent = '0';
+      document.getElementById('header-catch-rate').textContent = '0.0%';
+      document.getElementById('last-impact-error').textContent = '0.0 cm';
+      document.getElementById('last-flight-time').textContent = '0.00 s';
+      updateStateBadge('IDLE', 'IDLE / ARMED');
+    });
+
+    // Window Resize Handling
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    /* ==========================================================================
+       17. ANIMATION & RENDER LOOP
+       ========================================================================== */
+    let accumulatedTime = 0;
+    const FIXED_PHYSICS_DT = 1 / 120; // 120 Hz fixed sub-stepping
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+      accumulatedTime += delta;
+
+      // Fixed 120 Hz sub-step loop for numerical accuracy
+      while (accumulatedTime >= FIXED_PHYSICS_DT) {
+        physicsSubStep(FIXED_PHYSICS_DT);
+        accumulatedTime -= FIXED_PHYSICS_DT;
+      }
+
+      // Auto-Toss Loop Timer
+      if (State.autoToss) {
+        State.autoTossTimer += delta;
+        if (State.autoTossTimer >= 2.8) {
+          State.autoTossTimer = 0;
+          // Randomly mix normal and extreme tosses (80% normal, 20% extreme)
+          throwTrash(Math.random() < 0.22);
+        }
+      }
+
+      // Return status to IDLE once ball is settled
+      if (State.ballSettled && State.ballActive) {
+        State.statusTimer += delta;
+        if (State.statusTimer >= 1.6) {
+          State.ballActive = false;
+          State.statusTimer = 0;
+          updateStateBadge('IDLE', 'IDLE / ARMED');
+          targetRingMat.opacity = 0.0;
+          targetPillarMat.opacity = 0.0;
+        }
+      }
+
+      // Blink camera LED
+      camLed.material.color.setHex((Date.now() % 600 < 300) ? 0x00d2ff : 0x0284c7);
+
+      controls.update();
+      updateHUD();
+      renderer.render(scene, camera);
+    }
+
+    // Initialize with a gentle throw to welcome the user
+    setTimeout(() => {
+      throwTrash(false);
+      showToast('Simulation Armed', 'Initial 95ms latency engine active. Ready for toss evaluation.', 'info');
+    }, 800);
+
+    // Start loop
+    animate();
+  </script>
+</body>
+</html>
