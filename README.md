@@ -1,6 +1,11 @@
 # Autonomous Target-Tracking Smart Trash Can (5 m/s Sweet Spot Hybrid Build)
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://trash-can-simulation.vercel.app)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/anshckool/trash-can-simulation)
+
 An interactive, high-fidelity 3D CAD and real-world Newtonian physics simulation of an autonomous, target-tracking omnidirectional trash can. Built using **Three.js (r128)**, **OrbitControls**, and **Tailwind CSS**.
+
+🔗 **Live Production URL:** [https://trash-can-simulation.vercel.app](https://trash-can-simulation.vercel.app)
 
 Live simulation features strict Newtonian projectile dynamics, quadratic air drag, 120 FPS camera latency pipelines, 3-wheel Kiwi holonomic kinematics, traction clamping, and dynamic chassis inertia.
 
